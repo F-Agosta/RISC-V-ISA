@@ -1,21 +1,18 @@
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
-*.lo
+software/build/
+*.elf
 *.o
-*.obj
 
-# Precompiled Headers
-*.gch
-*.pch
+# gem5 outputs
+m5out/
+data/raw_stats/
+*.dot
+*.ini
+*.json
 
-# Linker files
-*.ilk
-
-# Debugger Files
-*.pdb
+# Python/System
+__pycache__/
+.DS_Store
+.vscode/
 
 # Compiled Dynamic libraries
 *.so
