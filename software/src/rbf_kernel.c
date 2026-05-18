@@ -3,10 +3,15 @@
 #include <stdlib.h>
 #include <math.h>
 #include <assert.h>
+#include <gem5/m5ops.h>
 
-#define N_FEATURES 16
-#define N_DATAPOINTS 128
+#ifndef N_FEATURES
+    #define N_FEATURES 64
+#endif
 
+#ifndef N_DATAPOINTS
+    #define N_DATAPOINTS 256
+#endif
 
 
 // Define the datapoint structure
@@ -18,13 +23,12 @@ struct vector {
 
 void initialize_data_points(struct vector vectors[]);
 void RBF_kernel(struct vector vectors[], float matrix[][N_DATAPOINTS], float gamma);
-float compute_elm(struct vector a, struct vector b, float gamma);
+float compute_elm(struct vector *a, struct vector *b, float gamma);
 static inline float fast_exp(float x);
 
 
 int main(void) {
 
-    // This is a test for an RBF kernel with 100 data points with N features each
 
     struct vector data[N_DATAPOINTS]; // Allocate datapoints
     float K[N_DATAPOINTS][N_DATAPOINTS]; // Allocate K similarity matrix
@@ -32,12 +36,19 @@ int main(void) {
 
     initialize_data_points(data);
 
+    m5_reset_stats(0, 0);
+
     RBF_kernel(data, K, gamma);
+
+    m5_dump_stats(0, 0);
+
+
 
     printf("Finished execution of RBF kernel\n"
            "Matrix of size %d * %d \n"
            "Vectors with %d features \n", N_DATAPOINTS, N_DATAPOINTS, N_FEATURES);
 
+    m5_exit(0);
     return 0;
 
 }
@@ -58,23 +69,23 @@ void RBF_kernel(struct vector vectors[], float K[][N_DATAPOINTS], float gamma) {
     for (int i = 0; i < N_DATAPOINTS; i++) {
         K[i][i] = 1.0; // The diagonal is formed by only ones
         for (int j = i + 1; j < N_DATAPOINTS; j++) {
-            K[i][j] = compute_elm(vectors[i], vectors[j], gamma);
+            K[i][j] = compute_elm(&vectors[i], &vectors[j], gamma);
             K[j][i] = K[i][j]; // The matrix is symmetric
         }
     }
 }
 
-float compute_elm(struct vector a, struct vector b, float gamma) {
+float compute_elm(struct vector *a, struct vector *b, float gamma) {
 
     // elm = exp(-gamma * ||a - b||^2)
     float dot_product = 0;
 
     for (int i = 0; i < N_FEATURES; i++) {
-        dot_product += a.data[i] * b.data[i];
+        dot_product += a->data[i] * b->data[i];
     }
 
 
-    return fast_exp(-gamma * (a.norm + b.norm - (2.0f * dot_product)));
+    return fast_exp(-gamma * (a->norm + b->norm - (2.0f * dot_product)));
 }
 
 static inline float fast_exp(float x) {
