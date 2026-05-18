@@ -41,6 +41,6 @@ plt.grid(axis='y', linestyle='--', alpha=0.7)
 plt.bar_label(plt.bar(labels, values), padding=3) # Add labels on top of bars
 
 plt.tight_layout()
-os.mkdir("results", exist_ok=True)
+os.makedirs("results", exist_ok=True)
 plt.savefig("results/instruction_mix_plot.png")
 print("Visual saved to results/instruction_mix_plot.png")
