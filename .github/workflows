@@ -1,9 +1,0 @@
-name: Test Galileo SSH
-on: [push]
-
-jobs:
-  test-connection:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check if GitHub can reach Galileo
-        run: nc -vz fagosta1@login.g100.cineca.it 22
