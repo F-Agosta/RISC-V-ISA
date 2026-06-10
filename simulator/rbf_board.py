@@ -8,8 +8,8 @@ from gem5.resources.resource import CustomResource
 from gem5.simulate.simulator import Simulator
 
 cache_hierarchy = PrivateL1PrivateL2CacheHierarchy(
-    l1d_size="32KiB",  # L1 Data Cache
-    l1i_size="32KiB",  # L1 Instruction Cache
+    l1d_size="64KiB",  # L1 Data Cache
+    l1i_size="64KiB",  # L1 Instruction Cache
     l2_size="256KiB"   # L2 Shared Cache
 )
 
@@ -23,6 +23,8 @@ board = SimpleBoard(
     memory=memory,
     cache_hierarchy=cache_hierarchy,
 )
+
+
 
 binary = CustomResource("software/build/rbf_kernel.elf")
 

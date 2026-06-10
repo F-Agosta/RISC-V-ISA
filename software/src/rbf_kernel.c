@@ -3,94 +3,115 @@
 #include <stdlib.h>
 #include <math.h>
 #include <assert.h>
-#include <gem5/m5ops.h>
+#include <gem5/m5ops.h> 
 
-#ifndef N_FEATURES
-    #define N_FEATURES 64
-#endif
+typedef struct {
+    float gamma;
+    float intercept;
+    int32_t num_sv;
+    int32_t num_features;
+} SvmHeader;
 
-#ifndef N_DATAPOINTS
-    #define N_DATAPOINTS 256
-#endif
-
-
-// Define the datapoint structure
-struct vector {
-    float data[N_FEATURES];
-    float norm;
-};
-
-
-void initialize_data_points(struct vector vectors[]);
-void RBF_kernel(struct vector vectors[], float matrix[][N_DATAPOINTS], float gamma);
-float compute_elm(struct vector *a, struct vector *b, float gamma);
+// --- Function Declarations ---
+float *generate_input_vectors(int num_vectors, int num_features);
+float infer_svm(const float *input_vector, const float *support_vectors, const float *dual_coef, 
+                int num_sv, int num_features, float gamma, float intercept);
 static inline float fast_exp(float x);
 
-
 int main(void) {
+    // 1. Binary Model Loading
+    FILE *file = fopen("training_data/svm_model_rv32imafc.bin", "rb");
+    if (!file) {
+        printf("Error opening the file\n");
+        return 1;
+    }
+
+    SvmHeader header;
+    fread(&header, sizeof(SvmHeader), 1, file);
+
+    float *dual_coef = (float *)malloc(header.num_sv * sizeof(float));
+    float *support_vectors = (float *)malloc(header.num_sv * header.num_features * sizeof(float));
+
+    fread(dual_coef, sizeof(float), header.num_sv, file);
+    fread(support_vectors, sizeof(float), header.num_sv * header.num_features, file);
+    fclose(file);
+
+    printf("Model uploaded: %d Support Vectors, %d Features.\n", header.num_sv, header.num_features);
+
+    // Input Batch Generation (Single Contiguous Buffer)
+    int num_vectors = 100;
+    float *input_vectors = generate_input_vectors(num_vectors, header.num_features);
+
+    // Array to store predictions
+    float *predictions = (float *)malloc(num_vectors * sizeof(float));
 
 
-    struct vector data[N_DATAPOINTS]; // Allocate datapoints
-    float K[N_DATAPOINTS][N_DATAPOINTS]; // Allocate K similarity matrix
-    float gamma = 1.0;
-
-    initialize_data_points(data);
-
+    // --- START GEM5 REGION OF INTEREST (ROI) ---
     m5_reset_stats(0, 0);
 
-    RBF_kernel(data, K, gamma);
+    for (int i = 0; i < num_vectors; i++) {
+        // Compute offset to pass only the i-th vector to the function
+        int input_offset = i * header.num_features;
+        
+        predictions[i] = infer_svm(
+            &input_vectors[input_offset], // Pointer to the beginning of the current vector
+            support_vectors, 
+            dual_coef, 
+            header.num_sv, 
+            header.num_features, 
+            header.gamma, 
+            header.intercept
+        );
+    }
 
     m5_dump_stats(0, 0);
 
+    printf("Inference completed on %d vectors.\n", num_vectors);
 
-
-    printf("Finished execution of RBF kernel\n"
-           "Matrix of size %d * %d \n"
-           "Vectors with %d features \n", N_DATAPOINTS, N_DATAPOINTS, N_FEATURES);
+    free(dual_coef);
+    free(support_vectors);
+    free(input_vectors);
+    free(predictions);
 
     m5_exit(0);
     return 0;
-
 }
 
-void initialize_data_points(struct vector vectors[]) {
+// --- Function Implementations ---
 
-    for (int i = 0; i < N_DATAPOINTS; i++) {
-        vectors[i].norm = 0;
-        for (int j = 0; j < N_FEATURES; j++) {
-            vectors[i].data[j] = ((float)rand() / (float)(RAND_MAX));
-            vectors[i].norm += vectors[i].data[j] * vectors[i].data[j];
+// Allocates a SINGLE 1D block and fills it with random vectors
+float *generate_input_vectors(int num_vectors, int num_features) {
+    float *vectors = (float *)malloc(num_vectors * num_features * sizeof(float));
+    for (int i = 0; i < num_vectors * num_features; i++) {
+        vectors[i] = ((float)rand() / (float)(RAND_MAX));
+    }
+    return vectors;
+}
+
+// Performs inference of a single vector against all support vectors
+float infer_svm(const float *input_vector, const float *support_vectors, const float *dual_coef, 
+                int num_sv, int num_features, float gamma, float intercept) {
+    
+    float decision_value = intercept;
+
+    for (int i = 0; i < num_sv; i++) {
+        float distance_sq = 0.0f;
+        int sv_offset = i * num_features;
+        
+        for (int j = 0; j < num_features; j++) {
+            float diff = input_vector[j] - support_vectors[sv_offset + j];
+            distance_sq += diff * diff;
         }
-    }
-}
 
-void RBF_kernel(struct vector vectors[], float K[][N_DATAPOINTS], float gamma) {
-
-    for (int i = 0; i < N_DATAPOINTS; i++) {
-        K[i][i] = 1.0; // The diagonal is formed by only ones
-        for (int j = i + 1; j < N_DATAPOINTS; j++) {
-            K[i][j] = compute_elm(&vectors[i], &vectors[j], gamma);
-            K[j][i] = K[i][j]; // The matrix is symmetric
-        }
-    }
-}
-
-float compute_elm(struct vector *a, struct vector *b, float gamma) {
-
-    // elm = exp(-gamma * ||a - b||^2)
-    float dot_product = 0;
-
-    for (int i = 0; i < N_FEATURES; i++) {
-        dot_product += a->data[i] * b->data[i];
+        decision_value += dual_coef[i] * fast_exp(-gamma * distance_sq);
     }
 
-
-    return fast_exp(-gamma * (a->norm + b->norm - (2.0f * dot_product)));
+    return decision_value;
 }
 
+// Schraudolph approximation for e^x
 static inline float fast_exp(float x) {
-    union { float f; uint32_t i; } ecole; // Union avoids the need to cast
+    union { float f; uint32_t i; } ecole;
     ecole.i = (uint32_t)(12102203.0f * x + 1064866805.0f);
     return ecole.f;
 }
-

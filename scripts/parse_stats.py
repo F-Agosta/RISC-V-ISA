@@ -1,5 +1,6 @@
 import os
 import matplotlib.pyplot as plt
+import sys
 
 stats_file = "data/m5out_baseline/stats.txt"
 
@@ -42,5 +43,23 @@ plt.bar_label(plt.bar(labels, values), padding=3) # Add labels on top of bars
 
 plt.tight_layout()
 os.makedirs("results", exist_ok=True)
-plt.savefig("results/instruction_mix_plot.png")
-print("Visual saved to results/instruction_mix_plot.png")
+if (len(sys.argv) > 1):
+    N_FEATURES, N_DATAPOINTS = sys.argv[1].split(',')
+else:
+    N_FEATURES, N_DATAPOINTS = 0, 0
+
+# Save graph
+plt.savefig(f"results/instruction_mix_plot_{N_FEATURES}_{N_DATAPOINTS}.png")
+print(f"Graph saved to results/instruction_mix_plot_{N_FEATURES}_{N_DATAPOINTS}.png")
+
+# Save health metrics data
+with open(f"results/health_metrics_{N_FEATURES}_{N_DATAPOINTS}.txt", "w") as f:
+    for key, value in health_metrics.items():
+        f.write(f"{key}: {value}\n")
+print(f"Health metrics saved to results/health_metrics_{N_FEATURES}_{N_DATAPOINTS}.txt")
+
+# Save instruction mix data
+with open(f"results/instruction_mix_{N_FEATURES}_{N_DATAPOINTS}.txt", "w") as f:
+    for inst, count in sorted_inst.items():
+        f.write(f"{inst}: {count}\n")
+print(f"Instruction mix saved to results/instruction_mix_{N_FEATURES}_{N_DATAPOINTS}.txt")
