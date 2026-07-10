@@ -1,0 +1,130 @@
+diff --git a/src/arch/riscv/decoder.cc b/src/arch/riscv/decoder.cc
+index 031f036bee..7bde2f187b 100644
+--- a/src/arch/riscv/decoder.cc
++++ b/src/arch/riscv/decoder.cc
+@@ -34,6 +34,8 @@
+ #include "base/bitfield.hh"
+ #include "debug/Decode.hh"
+ 
++uint32_t hdc_accumulators[32] = {0};
++
+ namespace gem5
+ {
+ 
+diff --git a/src/arch/riscv/isa/decoder.isa b/src/arch/riscv/isa/decoder.isa
+index 569da4b942..bdf9951761 100644
+--- a/src/arch/riscv/isa/decoder.isa
++++ b/src/arch/riscv/isa/decoder.isa
+@@ -6488,6 +6488,58 @@ decode QUADRANT default Unknown::unknown() {
+             }
+         }
+ 
++        // ---------------------------------------------------------------
++        // custom-2 opcode (0x5B): Stateful HDC Acceleration
++        // funct3 = 1: HD_BIND_ACCUM
++        // funct3 = 2: HD_THRESHOLD
++        // funct3 = 3: HD_TERNARY_DOT
++        // ---------------------------------------------------------------
++        0x16: decode FUNCT3 {
++            format ROp {
++                0x1: hd_bind_accum({{
++                    uint32_t bound = Rs1_uw ^ Rs2_uw;
++                    for (int i = 0; i < 32; ++i) {
++                        if ((bound >> i) & 1) {
++                            hdc_accumulators[i]++;
++                        }
++                    }
++                    Rd = 0;
++                }}, HdcAluOp);
++                
++                0x2: hd_threshold({{
++                    uint32_t threshold = Rs1_uw;
++                    uint32_t result = 0;
++                    for (int i = 0; i < 32; ++i) {
++                        if (hdc_accumulators[i] > threshold) {
++                            result |= (1U << i);
++                        }
++                        hdc_accumulators[i] = 0;
++                    }
++                    Rd = result;
++                }}, HdcAluOp);
++
++                0x3: hd_ternary_dot({{
++                    uint32_t q = Rs1_uw;
++                    uint32_t c = Rs2_uw;
++                    int32_t score = 0;
++                    for (int i = 0; i < 16; ++i) {
++                        uint8_t q_bit = (q >> i) & 1;
++                        uint8_t t_mag = (c >> (2 * i)) & 1;
++                        uint8_t t_sign = (c >> (2 * i + 1)) & 1;
++                        
++                        if (t_mag) {
++                            if (q_bit == !t_sign) {
++                                score += 1;
++                            } else {
++                                score -= 1;
++                            }
++                        }
++                    }
++                    Rd = (uint64_t)(int64_t)score;
++                }}, HdcAluOp);
++            }
++        }
++
+         0x1e: M5Op::M5Op();
+     }
+ }
+diff --git a/src/arch/riscv/isa/includes.isa b/src/arch/riscv/isa/includes.isa
+index b4be0e4ac6..f1e9409798 100644
+--- a/src/arch/riscv/isa/includes.isa
++++ b/src/arch/riscv/isa/includes.isa
+@@ -61,6 +61,8 @@ output header {{
+ #include "mem/packet.hh"
+ #include "mem/request.hh"
+ 
++extern uint32_t hdc_accumulators[32];
++
+ }};
+ 
+ output decoder {{
+@@ -90,6 +92,7 @@ namespace gem5::RiscvISAInst
+ {
+ using namespace RiscvISA;
+ } // namespace gem5::RiscvISAInst
++
+ }};
+ 
+ output exec {{
+diff --git a/src/cpu/FuncUnit.py b/src/cpu/FuncUnit.py
+index b8d4e0efce..08c3f6d472 100644
+--- a/src/cpu/FuncUnit.py
++++ b/src/cpu/FuncUnit.py
+@@ -130,6 +130,7 @@ class OpClass(Enum):
+         "SimdBf16Mult",
+         "SimdBf16MultAcc",
+         "Bf16Cvt",
++        "HdcAlu",
+         "System",
+     ]
+ 
+diff --git a/src/cpu/o3/FuncUnitConfig.py b/src/cpu/o3/FuncUnitConfig.py
+index 621cdb1c65..98fd690289 100644
+--- a/src/cpu/o3/FuncUnitConfig.py
++++ b/src/cpu/o3/FuncUnitConfig.py
+@@ -208,3 +208,4 @@ class RdWrPort(FUDesc):
+         OpDesc(opClass="SimdStrideSegmentedStore"),
+     ]
+     count = 4
++
+diff --git a/src/cpu/op_class.hh b/src/cpu/op_class.hh
+index 042254d00c..37d3e42eb6 100644
+--- a/src/cpu/op_class.hh
++++ b/src/cpu/op_class.hh
+@@ -148,6 +148,7 @@ static const OpClass SimdBf16MultOp = enums::SimdBf16Mult;
+ static const OpClass SimdBf16MultAccOp = enums::SimdBf16MultAcc;
+ static const OpClass Bf16CvtOp = enums::Bf16Cvt;
+ static const OpClass SimdDotProdOp = enums::SimdDotProd;
++static const OpClass HdcAluOp = enums::HdcAlu;
+ static const OpClass SystemOp = enums::System;
+ static const OpClass Num_OpClasses = enums::Num_OpClass;
+ 

@@ -71,3 +71,9 @@ Testing/
 # Ignore results and plots
 results/
 data/
+
+# Ignore datasets
+dataset/*.csv
+
+# Ignore the report (user will send it manually)
+report/
